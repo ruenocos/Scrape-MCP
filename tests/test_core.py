@@ -113,3 +113,81 @@ async def test_server_lists_scrape_tool():
     tools = await mcp.list_tools()
     assert [t.name for t in tools] == ["scrape"]
     assert "url" in tools[0].input_schema["properties"]
+
+
+def test_normalize_url_keeps_nested_url_in_query():
+    url = "example.com/login?next=https://example.com/a"
+    assert normalize_url(url) == "https://" + url
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<html><title>Post</title><script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script><p>Hi</p></html>',
+        '<html><title>Post</title><form><div class="g-recaptcha"></div></form></html>',
+        '<html><title>Post</title><script src="https://client.perimeterx.net/x/main.min.js"></script></html>',
+    ],
+)
+def test_detect_block_ignores_widgets_on_normal_pages(html):
+    assert detect_block(200, "cloudflare", html) is None
+
+
+def test_detect_block_flags_markers_on_error_pages():
+    html = '<html><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/chl_page/v1"></script></html>'
+    assert detect_block(403, "cloudflare", html) == "Cloudflare challenge"
+
+
+def test_text_uses_meta_charset_when_header_has_none():
+    html = '<html><head><meta charset="windows-1252"></head><body>caf\xe9 d\xe9j\xe0 vu</body></html>'
+    result = FetchResult("https://a", "https://a", 200, "text/html", html.encode("windows-1252"))
+    assert "café déjà vu" in result.text
+
+
+def test_text_handles_quoted_header_charset():
+    result = FetchResult("https://a", "https://a", 200, 'text/html; charset="iso-8859-1"', "caf\xe9".encode("latin-1"))
+    assert result.text == "café"
+
+
+@pytest.mark.parametrize("url", ["http://localhost:8080/admin", "http://169.254.169.254/latest/", "http://192.168.1.1/"])
+async def test_private_hosts_are_refused(url, monkeypatch):
+    from scrape_mcp.fetch import FetchError, ensure_public_host
+
+    monkeypatch.delenv("SCRAPE_MCP_ALLOW_PRIVATE", raising=False)
+    with pytest.raises(FetchError, match="private or local"):
+        await ensure_public_host(url)
+
+
+async def test_private_hosts_allowed_with_opt_in(monkeypatch):
+    from scrape_mcp.fetch import ensure_public_host
+
+    monkeypatch.setenv("SCRAPE_MCP_ALLOW_PRIVATE", "1")
+    await ensure_public_host("http://localhost:8080/")
+
+
+def test_cache_prunes_expired_rows(tmp_path):
+    cache = Cache(tmp_path / "c.db", ttl=60)
+    cache.put(FetchResult("https://a", "https://a", 200, "text/html", b"x"))
+    cache._db.execute("UPDATE pages SET fetched_at = 0")
+    cache._db.commit()
+    reopened = Cache(tmp_path / "c.db", ttl=60)
+    assert reopened._db.execute("SELECT COUNT(*) FROM pages").fetchone()[0] == 0
+
+
+def test_cache_errors_are_not_fatal(tmp_path):
+    cache = Cache(tmp_path / "c.db")
+    cache.close()
+    cache.put(FetchResult("https://a", "https://a", 200, "text/html", b"x"))
+    assert cache.get("https://a") is None
+
+
+async def test_binary_responses_are_not_cached(tmp_path, monkeypatch):
+    from scrape_mcp.fetch import FetchError
+
+    async def fake_fetch(url, **_):
+        return FetchResult(url, url, 200, "application/pdf", b"%PDF"), None
+
+    monkeypatch.setattr(scrape_module, "fetch_http", fake_fetch)
+    cache = Cache(tmp_path / "c.db")
+    with pytest.raises(FetchError, match="not a web page"):
+        await scrape("https://x.example/report.pdf", cache=cache)
+    assert cache.get("https://x.example/report.pdf") is None

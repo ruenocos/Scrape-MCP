@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 
 from .cache import Cache
 from .extract import extract_body, truncate
-from .fetch import FetchError, fetch_http, normalize_url
+from .fetch import FetchError, fetch_http, is_binary, normalize_url
 
 
 class BlockedError(Exception):
@@ -36,12 +36,10 @@ async def scrape(
             )
         if result.status >= 400:
             raise FetchError(f"{url} returned HTTP {result.status}.")
+        if is_binary(result.content_type):
+            raise FetchError(f"{url} is not a web page ({result.content_type}); binary files are not supported yet.")
         if cache is not None:
             cache.put(result)
-
-    ct = result.content_type.lower()
-    if ct.startswith(("image/", "video/", "audio/")) or "pdf" in ct or "octet-stream" in ct:
-        raise FetchError(f"{url} is not a web page ({result.content_type or 'unknown type'}); binary files are not supported yet.")
 
     extracted = extract_body(result.content_type, result.text, result.final_url, include_links=include_links)
     body, cut = truncate(extracted.markdown, max_chars)

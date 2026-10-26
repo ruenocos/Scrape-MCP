@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "scrape": {
+      "command": "sh",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/bin/run.sh"]
+    }
+  }
+}

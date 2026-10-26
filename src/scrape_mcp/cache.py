@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
 import time
@@ -11,6 +12,8 @@ from .fetch import FetchResult
 
 DEFAULT_TTL = 60 * 60  # one hour
 
+log = logging.getLogger(__name__)
+
 
 def default_cache_path() -> Path:
     root = os.environ.get("SCRAPE_MCP_CACHE_DIR")
@@ -19,11 +22,15 @@ def default_cache_path() -> Path:
 
 
 class Cache:
+    """Best effort: a cache failure (locked or corrupt database) is logged and treated
+    as a miss, never as a failed scrape. Claude Code and Claude Desktop may both run a
+    server against the same file."""
+
     def __init__(self, path: Path | None = None, ttl: int = DEFAULT_TTL):
         self.path = path or default_cache_path()
         self.ttl = ttl
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(self.path, check_same_thread=False)
+        self._db = sqlite3.connect(self.path, check_same_thread=False, timeout=5)
         self._db.execute(
             """CREATE TABLE IF NOT EXISTS pages (
                 url TEXT PRIMARY KEY,
@@ -36,12 +43,25 @@ class Cache:
             )"""
         )
         self._db.commit()
+        self.prune()
+
+    def prune(self) -> None:
+        """Delete expired pages so the file does not grow forever."""
+        try:
+            self._db.execute("DELETE FROM pages WHERE fetched_at < ?", (time.time() - self.ttl,))
+            self._db.commit()
+        except sqlite3.Error as exc:
+            log.warning("cache prune failed: %s", exc)
 
     def get(self, url: str) -> tuple[FetchResult, float] | None:
-        row = self._db.execute(
-            "SELECT final_url, status, content_type, body, fetcher, fetched_at FROM pages WHERE url = ?",
-            (url,),
-        ).fetchone()
+        try:
+            row = self._db.execute(
+                "SELECT final_url, status, content_type, body, fetcher, fetched_at FROM pages WHERE url = ?",
+                (url,),
+            ).fetchone()
+        except sqlite3.Error as exc:
+            log.warning("cache read failed: %s", exc)
+            return None
         if row is None:
             return None
         final_url, status, content_type, body, fetcher, fetched_at = row
@@ -50,6 +70,12 @@ class Cache:
         return FetchResult(url, final_url, status, content_type, body, fetcher), fetched_at
 
     def put(self, result: FetchResult) -> None:
+        try:
+            self._write(result)
+        except sqlite3.Error as exc:
+            log.warning("cache write failed: %s", exc)
+
+    def _write(self, result: FetchResult) -> None:
         self._db.execute(
             "INSERT OR REPLACE INTO pages VALUES (?, ?, ?, ?, ?, ?, ?)",
             (

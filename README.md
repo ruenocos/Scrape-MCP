@@ -20,6 +20,10 @@ You need [uv](https://docs.astral.sh/uv/), which also fetches the right Python f
 brew install uv
 ```
 
+### Cowork
+
+Install the plugin file `web-scraper.plugin` (built from [`plugin/web-scraper`](plugin/web-scraper)). It adds the `scrape` tool and a skill that tells Claude when to use it. The first start downloads dependencies and can take a minute; if the tool doesn't appear, start a new task.
+
 ### Claude Code
 
 ```sh
@@ -54,7 +58,7 @@ If Claude Desktop cannot find `uvx`, replace it with the full path from `which u
 | `include_links` | false | Keep hyperlinks in the markdown. |
 | `fresh` | false | Skip the cache. |
 
-Set `SCRAPE_MCP_CACHE_DIR` to move the cache.
+Set `SCRAPE_MCP_CACHE_DIR` to move the cache. Local and private network addresses (localhost, 192.168.x.x and so on) are refused so a malicious page can't make Claude read your internal services; set `SCRAPE_MCP_ALLOW_PRIVATE=1` to allow them.
 
 ## Development
 
