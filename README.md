@@ -2,7 +2,7 @@
 
 A local MCP server that reads web pages as clean markdown for Claude. It aims to do better than a generic web fetch, taking cues from Firecrawl and Apify, while running on your own machine for free.
 
-**Status:** Phase 0 (foundation). The `scrape` tool works for normal websites. Stealth browsing for Cloudflare-protected sites, YouTube and Reddit come in the next phases.
+**Status:** Phase 1 in progress. `scrape` works for normal websites and `youtube` reads video details and transcripts. Stealth browsing for Cloudflare-protected and JavaScript-heavy sites is next, then Reddit.
 
 ## What it does today
 
@@ -11,6 +11,8 @@ A local MCP server that reads web pages as clean markdown for Claude. It aims to
 - Strips navigation, footers and ads with Trafilatura.
 - Caches pages for one hour in `~/.cache/scrape-mcp/`. Pass `fresh: true` to refetch.
 - Recognises anti-bot walls (Cloudflare, DataDome, PerimeterX, CAPTCHAs) and says so, instead of handing Claude a "Just a moment..." page.
+
+- **`youtube(video)`** returns a video's title, channel, date, duration, stats, chapters, description and transcript. The transcript comes back as timestamped paragraphs grouped by chapter. It works with any video link or ID, and `scrape` hands video links to it automatically. It uses yt-dlp (with a bundled Deno runtime for YouTube's player code), and falls back to youtube-transcript-api when yt-dlp finds no captions.
 
 ## Install on a Mac
 
@@ -58,6 +60,14 @@ If Claude Desktop cannot find `uvx`, replace it with the full path from `which u
 | `include_links` | false | Keep hyperlinks in the markdown. |
 | `fresh` | false | Skip the cache. |
 
+| `youtube` parameter | Default | What it does |
+| --- | --- | --- |
+| `video` | required | Any YouTube video URL or 11-character ID. |
+| `transcript` | true | Include the transcript. `false` is faster. |
+| `lang` | `en` | Preferred caption language; falls back to English, then the video's language. |
+| `max_chars` | 40000 | Cut output to about this many characters. `0` means no limit. |
+| `fresh` | false | Skip the cache. |
+
 Set `SCRAPE_MCP_CACHE_DIR` to move the cache. Local and private network addresses (localhost, 192.168.x.x and so on) are refused so a malicious page can't make Claude read your internal services; set `SCRAPE_MCP_ALLOW_PRIVATE=1` to allow them.
 
 ## Development
@@ -70,7 +80,8 @@ uv run python scripts/check_sites.py   # live check against 20 real sites
 
 ## Roadmap
 
-1. **Phase 0, foundation:** `scrape` with fast fetch, clean markdown, cache. *(this release)*
-2. **Phase 1, hard websites:** stealth browser fallback (Camoufox via Scrapling) for Cloudflare and JavaScript-heavy pages, plus `crawl` and `map_site`.
-3. **Phase 2, platforms:** YouTube metadata and transcripts (yt-dlp with PO tokens) and Reddit threads (official OAuth API).
-4. **Phase 3, ship it:** Claude Code plugin, one-command installer and a `doctor` check.
+1. **Phase 0, foundation:** `scrape` with fast fetch, clean markdown, cache. *(done)*
+2. **Phase 1a, YouTube:** video details and transcripts. *(this release)*
+3. **Phase 1b, hard websites:** stealth browser fallback (Camoufox via Scrapling) for Cloudflare, JavaScript-heavy and listing pages, plus `crawl` and `map_site`.
+4. **Phase 2, Reddit:** posts and comment trees through the official OAuth API.
+5. **Phase 3, polish:** Claude Code plugin, one-command installer and a `doctor` check.

@@ -111,8 +111,8 @@ async def test_server_lists_scrape_tool():
     from scrape_mcp.server import mcp
 
     tools = await mcp.list_tools()
-    assert [t.name for t in tools] == ["scrape"]
-    assert "url" in tools[0].input_schema["properties"]
+    assert sorted(t.name for t in tools) == ["scrape", "youtube"]
+    assert "url" in next(t for t in tools if t.name == "scrape").input_schema["properties"]
 
 
 def test_normalize_url_keeps_nested_url_in_query():

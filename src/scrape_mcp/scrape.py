@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 
 from .cache import Cache
 from .extract import extract_body, truncate
-from .fetch import FetchError, fetch_http, is_binary, normalize_url
+from .fetch import FetchError, FetchResult, fetch_http, is_binary, normalize_url
+from . import youtube as yt
 
 
 # Less text than this from a page bigger than this usually means a JavaScript app shell.
@@ -38,6 +39,13 @@ async def scrape(
     fresh: bool = False,
 ) -> str:
     url = normalize_url(url)
+    if yt.is_youtube_url(url):
+        try:
+            yt.parse_video_id(url)
+        except ValueError:
+            pass  # a channel or playlist page: scrape it as a normal page
+        else:
+            return await youtube(url, cache=cache, max_chars=max_chars, fresh=fresh)
 
     cached_at = None
     hit = None if (fresh or cache is None) else cache.get(url)
@@ -78,3 +86,41 @@ async def scrape(
         lines.append(f"- Truncated to {len(body):,} of {len(extracted.markdown):,} characters; raise max_chars to see more.")
     lines += ["", "---", "", body]
     return "\n".join(lines)
+
+
+async def youtube(
+    video: str,
+    *,
+    cache: Cache | None = None,
+    lang: str = "en",
+    transcript: bool = True,
+    max_chars: int = 40_000,
+    fresh: bool = False,
+) -> str:
+    """Video details and transcript as markdown. Cached like pages, keyed by video and language."""
+    video_id = yt.parse_video_id(video)
+    key = f"youtube:{video_id}:{lang}:{int(transcript)}"
+    hit = None if (fresh or cache is None) else cache.get(key)
+    if hit is not None:
+        markdown = hit[0].body.decode()
+    else:
+        try:
+            info = await yt.get_video(video_id, lang=lang, transcript=transcript)
+        except yt.YouTubeBlockedError as exc:
+            raise BlockedError(
+                f"YouTube asked for a bot check on {video_id}: {exc}. This usually clears from a home "
+                "connection; heavy use from one IP can trigger it for a while."
+            ) from exc
+        except yt.YouTubeError as exc:
+            raise FetchError(f"Could not read YouTube video {video_id}: {exc}") from exc
+        header, text = yt.format_video(info)
+        if transcript and not text:
+            text = "_No transcript available: the video has no captions in any language._"
+        markdown = header + ("\n\n## Transcript\n\n" + text if transcript else "")
+        if cache is not None:
+            url = f"https://www.youtube.com/watch?v={video_id}"
+            cache.put(FetchResult(key, url, 200, "text/markdown", markdown.encode(), "yt-dlp"))
+    body, cut = truncate(markdown, max_chars)
+    if cut:
+        body += f"\n\n_Truncated to {len(body):,} of {len(markdown):,} characters; raise max_chars to see more._"
+    return body
