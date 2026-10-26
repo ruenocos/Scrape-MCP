@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "scrape": {
+      "command": "sh",
+      "args": [
+        "-c",
+        "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH\"; command -v uvx >/dev/null 2>&1 || { echo 'scrape: uv is not installed. Run: brew install uv' >&2; exit 1; }; exec uvx --refresh-package scrape-mcp --from git+https://github.com/ruenocos/Scrape-MCP scrape-mcp"
+      ]
+    }
+  }
+}
