@@ -1,6 +1,6 @@
 {
   "name": "web-scraper",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Read web pages as clean markdown through a local scraper that does better than a generic web fetch.",
   "author": { "name": "Wons" },
   "repository": "https://github.com/ruenocos/Scrape-MCP",

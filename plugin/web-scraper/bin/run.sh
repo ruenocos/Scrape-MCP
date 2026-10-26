@@ -5,4 +5,4 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:
 if ! command -v uvx >/dev/null 2>&1; then
   curl -LsSf https://astral.sh/uv/install.sh | sh >&2
 fi
-exec uvx --from "git+https://github.com/ruenocos/Scrape-MCP" scrape-mcp
+exec uvx --refresh-package scrape-mcp --from "git+https://github.com/ruenocos/Scrape-MCP" scrape-mcp
