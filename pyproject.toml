@@ -9,6 +9,9 @@ dependencies = [
     "mcp>=2.3,<3",
     "curl_cffi>=0.17",
     "trafilatura>=2.0",
+    "yt-dlp[default,deno]>=2026.10.21",
+    "youtube-transcript-api>=1.2.4",
+    "bgutil-ytdlp-pot-provider>=2.0.2",
 ]
 
 [project.scripts]
