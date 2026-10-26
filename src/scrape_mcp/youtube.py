@@ -136,8 +136,18 @@ async def _download_track(formats: list[dict]) -> list[Segment]:
 # ---- fetching -----------------------------------------------------------------------
 
 
+class _SilentLogger:
+    """yt-dlp prints errors to stderr even when quiet; they come back to us as exceptions."""
+
+    def debug(self, msg: str) -> None: ...
+    def info(self, msg: str) -> None: ...
+    def warning(self, msg: str) -> None: ...
+    def error(self, msg: str) -> None: ...
+
+
 def _ydl_options() -> dict:
     options = {
+        "logger": _SilentLogger(),
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
