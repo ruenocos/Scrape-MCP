@@ -191,3 +191,19 @@ async def test_binary_responses_are_not_cached(tmp_path, monkeypatch):
     with pytest.raises(FetchError, match="not a web page"):
         await scrape("https://x.example/report.pdf", cache=cache)
     assert cache.get("https://x.example/report.pdf") is None
+
+
+def test_detect_block_fastly_client_challenge():
+    html = "<html><head><title>Client Challenge</title></head><body><script></script></body></html>"
+    assert detect_block(200, "", html) == "Fastly client challenge"
+
+
+async def test_scrape_notes_javascript_app_shells(monkeypatch):
+    shell = "<html><head><title>App</title>" + "<script>var x=1;</script>" * 200 + "</head><body><div id=root>Loading</div></body></html>"
+
+    async def fake_fetch(url, **_):
+        return FetchResult(url, url, 200, "text/html", shell.encode()), None
+
+    monkeypatch.setattr(scrape_module, "fetch_http", fake_fetch)
+    out = await scrape("https://app.example")
+    assert "renders its content with JavaScript" in out

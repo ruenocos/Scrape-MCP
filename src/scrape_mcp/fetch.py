@@ -92,6 +92,7 @@ async def ensure_public_host(url: str) -> None:
 _WALL_TITLES: list[tuple[str, re.Pattern[str]]] = [
     ("Cloudflare challenge", re.compile(r"<title>\s*Just a moment\.\.\.\s*</title>", re.I)),
     ("Cloudflare block", re.compile(r"<title>\s*Attention Required! \| Cloudflare\s*</title>", re.I)),
+    ("Fastly client challenge", re.compile(r"<title>\s*Client Challenge\s*</title>", re.I)),
 ]
 
 # Markers that normal pages also carry (Cloudflare's JS detection script, a reCAPTCHA

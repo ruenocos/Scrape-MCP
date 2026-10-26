@@ -9,6 +9,11 @@ from .extract import extract_body, truncate
 from .fetch import FetchError, fetch_http, is_binary, normalize_url
 
 
+# Less text than this from a page bigger than this usually means a JavaScript app shell.
+THIN_CHARS = 300
+THIN_HTML_BYTES = 3000
+
+
 class BlockedError(Exception):
     """The site answered with an anti-bot wall instead of the page."""
 
@@ -53,6 +58,11 @@ async def scrape(
         if key in extracted.meta:
             lines.append(f"- {key.capitalize()}: {extracted.meta[key]}")
     lines.append(f"- Fetched: {fetched:%Y-%m-%d %H:%M} UTC via {result.fetcher}{' (cached)' if cached_at else ''}")
+    if len(extracted.markdown) < THIN_CHARS and len(result.body) > THIN_HTML_BYTES:
+        lines.append(
+            "- Note: very little text came back from a much larger page, so it probably renders its "
+            "content with JavaScript. The stealth browser planned for the next phase will handle it."
+        )
     if cut:
         lines.append(f"- Truncated to {len(body):,} of {len(extracted.markdown):,} characters; raise max_chars to see more.")
     lines += ["", "---", "", body]
