@@ -76,8 +76,10 @@ async def ensure_public_host(url: str) -> None:
     host = urlparse(url).hostname or ""
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, None)
-    except socket.gaierror as exc:
-        raise FetchError(f"Could not resolve {host}: {exc}") from exc
+    except socket.gaierror:
+        # Behind an HTTP proxy only the proxy may resolve public names, so let the
+        # request itself report a host that truly doesn't exist.
+        return
     for info in infos:
         addr = ipaddress.ip_address(info[4][0])
         if not addr.is_global:
@@ -107,12 +109,25 @@ _ERROR_MARKERS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
-def detect_block(status: int, headers_server: str, html: str) -> str | None:
+# Phrases from interstitials that only count on a small page, where they can't be a
+# passing mention in a real article or a <noscript> note on a full page.
+_SMALL_PAGE_WALL = re.compile(
+    r"verify (?:that )?you(?:'|’)?re not a robot|please enable javascript and cookies to continue",
+    re.I,
+)
+SMALL_PAGE_BYTES = 20_000
+
+
+def detect_block(status: int, headers_server: str, html: str, *, waf_action: str = "") -> str | None:
     """Return a short reason when the response looks like an anti-bot wall, else None."""
+    if waf_action.lower() in ("challenge", "captcha", "block"):
+        return f"AWS WAF {waf_action.lower()}"
     head = html[:200_000]
     for name, pattern in _WALL_TITLES:
         if pattern.search(head):
             return name
+    if len(html) < SMALL_PAGE_BYTES and _SMALL_PAGE_WALL.search(head):
+        return "bot check page"
     if status < 400:
         return None
     for name, pattern in _ERROR_MARKERS:
@@ -160,12 +175,15 @@ async def fetch_http(url: str, *, timeout: float = DEFAULT_TIMEOUT) -> tuple[Fet
                     body=b"".join(chunks)[:MAX_BYTES],
                 )
                 server = response.headers.get("server", "")
+                waf_action = response.headers.get("x-amzn-waf-action", "")
     except (RequestException, CurlError) as exc:
-        raise FetchError(f"Could not fetch {url}: {exc}") from exc
+        host = urlparse(url).hostname
+        detail = str(exc).split(". See ")[0].removeprefix("Failed to perform, ")
+        raise FetchError(f"Couldn't connect to {host}: {detail}") from exc
 
     reason = None
     if "html" in result.content_type or not result.content_type:
-        reason = detect_block(result.status, server, result.text)
-    elif result.status == 429:
-        reason = "rate limited (HTTP 429)"
+        reason = detect_block(result.status, server, result.text, waf_action=waf_action)
+    elif waf_action or result.status == 429:
+        reason = detect_block(result.status, server, "", waf_action=waf_action)
     return result, reason

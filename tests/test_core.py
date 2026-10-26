@@ -207,3 +207,63 @@ async def test_scrape_notes_javascript_app_shells(monkeypatch):
     monkeypatch.setattr(scrape_module, "fetch_http", fake_fetch)
     out = await scrape("https://app.example")
     assert "renders its content with JavaScript" in out
+
+
+def test_detect_block_aws_waf_header():
+    assert detect_block(202, "", "", waf_action="challenge") == "AWS WAF challenge"
+
+
+def test_detect_block_small_robot_check_page():
+    html = "<html><body>JavaScript is disabled. Please verify you're not a robot.</body></html>"
+    assert detect_block(200, "", html) == "bot check page"
+
+
+def test_detect_block_ignores_robot_phrase_in_long_article():
+    html = "<html><body>" + "<p>Long article text.</p>" * 2000 + "verify you're not a robot</body></html>"
+    assert detect_block(200, "", html) is None
+
+
+def test_wikipedia_edit_links_and_footnotes_are_removed():
+    html = (
+        "<html><head><title>Animation</title></head><body><div id='content'>"
+        "<h2>History<span class='mw-editsection'>[<a href='/edit'>edit</a>]</span></h2>"
+        + "<p>Animation is a method by which still figures are made to appear moving."
+        "<sup class='reference'><a href='#c1'>[1]</a></sup> It has a long history in many cultures.</p>" * 5
+        + "</div></body></html>"
+    )
+    out = extract_body("text/html", html, "https://en.wikipedia.org/wiki/Animation")
+    assert "[edit]" not in out.markdown and "edit]" not in out.markdown
+    assert "[1]" not in out.markdown
+    assert "still figures" in out.markdown
+
+
+@pytest.mark.parametrize(
+    "author,keep",
+    [
+        ("Jakob Nielsen", True),
+        ("Kate Moran, Page Laubheimer", True),
+        ("Filter by author sup-metal", False),
+        ("Authority control databases International GND FAST National United States", False),
+    ],
+)
+def test_author_plausibility(author, keep):
+    from scrape_mcp.extract import _plausible_author
+
+    assert _plausible_author(author) is keep
+
+
+async def test_reddit_403_points_to_oauth(monkeypatch):
+    from scrape_mcp.fetch import FetchError
+
+    async def fake_fetch(url, **_):
+        return FetchResult(url, url, 403, "text/html", b"<html></html>"), None
+
+    monkeypatch.setattr(scrape_module, "fetch_http", fake_fetch)
+    with pytest.raises(FetchError, match="OAuth"):
+        await scrape("https://www.reddit.com/r/design/")
+
+
+def test_author_keeps_name_particles():
+    from scrape_mcp.extract import _plausible_author
+
+    assert _plausible_author("Vincent van Gogh")

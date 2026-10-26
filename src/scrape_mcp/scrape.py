@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from .cache import Cache
 from .extract import extract_body, truncate
@@ -16,6 +17,16 @@ THIN_HTML_BYTES = 3000
 
 class BlockedError(Exception):
     """The site answered with an anti-bot wall instead of the page."""
+
+
+def _status_hint(url: str, status: int) -> str:
+    host = (urlparse(url).hostname or "").lower()
+    if status in (401, 403) and (host == "reddit.com" or host.endswith(".reddit.com")):
+        return (
+            " Reddit has refused anonymous access since May 2026. Reddit support through its "
+            "free official API (OAuth keys) is planned for Phase 2."
+        )
+    return ""
 
 
 async def scrape(
@@ -40,7 +51,7 @@ async def scrape(
                 "the stealth browser fallback is planned for the next phase."
             )
         if result.status >= 400:
-            raise FetchError(f"{url} returned HTTP {result.status}.")
+            raise FetchError(f"{url} returned HTTP {result.status}.{_status_hint(result.final_url, result.status)}")
         if is_binary(result.content_type):
             raise FetchError(f"{url} is not a web page ({result.content_type}); binary files are not supported yet.")
         if cache is not None:

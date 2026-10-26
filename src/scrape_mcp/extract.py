@@ -3,10 +3,36 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 
 import trafilatura
 from trafilatura.metadata import extract_metadata
+
+
+# Page furniture that Trafilatura keeps as text: Wikipedia "[edit]" links and the like.
+_PRUNE_XPATH = [
+    "//span[contains(@class, 'mw-editsection')]",
+    "//sup[contains(@class, 'reference')]",
+]
+
+
+_NAME_PARTICLES = {"de", "da", "di", "du", "del", "der", "den", "van", "von", "la", "le", "bin", "al", "ten", "ter"}
+
+
+def _plausible_author(value: str) -> bool:
+    """Reject menu text and link lists that metadata extraction mistakes for an author,
+    such as 'Filter by author' or Wikipedia's 'Authority control databases ...'."""
+    if len(value) > 80:
+        return False
+    for name in re.split(r"[,;&]| and ", value):
+        words = name.split()
+        if len(words) > 4:
+            return False
+        # Real names are capitalised apart from particles like "van" or "de".
+        if any(w[0].islower() and w not in _NAME_PARTICLES for w in words):
+            return False
+    return True
 
 
 @dataclass
@@ -20,6 +46,7 @@ def extract_html(html: str, url: str, *, include_links: bool = False) -> Extract
     """Main content as markdown via Trafilatura, falling back to a looser pass."""
     markdown = trafilatura.extract(
         html,
+        prune_xpath=_PRUNE_XPATH,
         url=url,
         output_format="markdown",
         include_links=include_links,
@@ -43,7 +70,7 @@ def extract_html(html: str, url: str, *, include_links: bool = False) -> Extract
         title = doc.title
         for key in ("author", "date", "sitename", "description"):
             value = getattr(doc, key, None)
-            if value:
+            if value and (key != "author" or _plausible_author(str(value))):
                 meta[key] = str(value)
     return Extracted(markdown=markdown.strip(), title=title, meta=meta)
 
